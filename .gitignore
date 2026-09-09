@@ -1,0 +1,20 @@
+# Local database (created automatically; seed with `python seed_data.py`)
+attendance.db
+*.db
+
+# Python caches
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Freebuff workspace metadata & preview logs
+.freebuff/
+
+# Environment / secrets
+.env
+.env.local
+
+# OS artifacts
+Thumbs.db
+.DS_Store

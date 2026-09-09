@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Venue Projector // Cyber-Attend</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23050807'/%3E%3Crect x='7' y='7' width='18' height='18' rx='3' fill='none' stroke='%2300FF66' stroke-width='2.5'/%3E%3Crect x='12' y='12' width='8' height='8' fill='%2300FF66'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    body {
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 40%, #062414 0%, #050807 85%);
+    }
+    .projector-waiting {
+      padding: 40px;
+      background: rgba(5,8,7,0.6);
+      border: 2px dashed var(--dark-border);
+      border-radius: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      max-width: 520px;
+    }
+  </style>
+</head>
+<body>
+  <div class="projector-fullscreen">
+    <!-- Top Bar -->
+    <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 1100px; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+      <div style="display: flex; align-items: center; gap: 14px;">
+        <span class="brand-badge">
+          <span class="pulse-dot"></span>
+          OFFICIAL EVENT ATTENDANCE
+        </span>
+        <span id="projEventName" class="text-muted font-weight-bold" style="font-size: 1.1rem;">
+          {{ session_data.event_name if session_data else "EVENT VENUE" }}
+        </span>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: center;">
+        <div id="projSessionStatus" class="status-pill status-inactive" style="display: none;">
+          <span style="width:8px;height:8px;border-radius:50%;background:#7A8580;"></span>
+          <span>ATTENDANCE: CLOSED</span>
+        </div>
+        <div id="projCheckinCounter" class="mono text-neon" style="font-size: 1.1rem; font-weight: 700; background: rgba(0,255,102,0.1); border: 1px solid var(--neon-green); padding: 6px 14px; border-radius: 20px;">
+          <span id="counterNum">--</span> CHECKED IN
+        </div>
+        <button id="btnFullscreenToggle" class="btn btn-outline-neon btn-sm" onclick="toggleFullscreen()" title="Toggle Fullscreen (Key: F)">
+          ⛶ Fullscreen
+        </button>
+        <a id="projCheckinBtn" href="/checkin" target="_blank" class="btn btn-neon btn-sm" style="text-decoration: none;">
+          Open Check-in ↗
+        </a>
+        <a href="/admin" class="btn btn-secondary btn-sm" style="text-decoration: none;">Admin Console</a>
+      </div>
+    </div>
+
+    <!-- Active Session Title -->
+    <h1 id="projSessionTitle" style="font-size: 2.4rem; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 8px;">
+      {{ session_data.name if session_data else "Waiting for Session" }}
+    </h1>
+
+    <div id="projSessionTiming" class="mono text-muted" style="font-size: 1rem; margin-bottom: 20px;">
+      {% if session_data %}
+        Date: {{ session_data.session_date }} | Session Window: {{ session_data.start_time }} - {{ session_data.end_time }}
+      {% else %}
+        Please activate a session in the admin console.
+      {% endif %}
+    </div>
+
+    <!-- The Single Common QR Code Frame (or Waiting State) -->
+    {% if session_data %}
+    <div class="projector-qr-frame">
+      <div id="projectorQrCanvas"></div>
+    </div>
+    {% else %}
+    <div class="projector-waiting">
+      <div style="font-size: 2.6rem; color: var(--neon-green); line-height: 1;">⌛</div>
+      <div style="font-weight: 700; font-size: 1.15rem; letter-spacing: 0.03em;">NO SESSION ON DISPLAY</div>
+      <p class="text-muted" style="font-size: 0.9rem; max-width: 380px;">
+        The check-in QR code will appear here automatically once a session is activated in the Admin Console.
+      </p>
+      <a href="/admin" class="btn btn-neon btn-sm" style="text-decoration: none;">Open Admin Console ➔</a>
+    </div>
+    {% endif %}
+
+    {% if session_data %}
+    <!-- Venue Scan Instructions -->
+    <div style="max-width: 600px; margin-top: 10px;">
+      <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px;">
+        <span class="pulse-dot"></span>
+        <span class="mono text-neon" style="font-size: 1.1rem; font-weight: 700; letter-spacing: 0.05em;">
+          SCAN WITH PHONE CAMERA
+        </span>
+      </div>
+      <p class="text-muted" style="font-size: 0.95rem;">
+        1. Point your phone camera at this common QR code.<br>
+        2. Enter your unique <span class="mono text-neon">Participant ID</span> &amp; PIN on the check-in screen.
+      </p>
+      <div id="directUrlDisplay" class="mono text-dim" style="font-size: 0.8rem; margin-top: 10px;"></div>
+    </div>
+    {% endif %}
+  </div>
+
+  <script>
+    let currentSessionId = {{ session_data.id if session_data else 'null' }};
+    let currentToken = "{{ session_data.session_token if session_data else '' }}";
+
+    function renderProjectorQR(sessionId, token) {
+      const container = document.getElementById("projectorQrCanvas");
+      if (!container || !sessionId) return;
+
+      const checkinUrl = `${window.location.origin}/checkin?session_id=${sessionId}&token=${token}`;
+      const urlEl = document.getElementById("directUrlDisplay");
+      if (urlEl) urlEl.textContent = `Direct URL: ${checkinUrl}`;
+      const cBtn = document.getElementById("projCheckinBtn");
+      if (cBtn) cBtn.href = checkinUrl;
+
+      const qrSrc = `/api/qr?data=${encodeURIComponent(checkinUrl)}&size=14`;
+      container.innerHTML = `<img src="${qrSrc}" alt="Check-in QR Code"
+        style="width:320px;height:320px;display:block;"
+        onerror="this.outerHTML='<div style=\\'color:#ff4444;padding:2rem;text-align:center;\\'>QR Error — check server</div>'"
+      >`;
+    }
+
+    async function pollProjectorStats() {
+      if (!currentSessionId) return;
+      try {
+        const res = await fetch(`/api/public/projector_stats?session_id=${currentSessionId}`);
+        const data = await res.json();
+        if (data.success) {
+          document.getElementById("counterNum").textContent = data.total_checkins;
+          const pill = document.getElementById("projSessionStatus");
+          if (pill) {
+            pill.style.display = "flex";
+            if (data.is_active) {
+              pill.className = "status-pill status-active";
+              pill.innerHTML = '<span class="pulse-dot"></span><span>ATTENDANCE: OPEN</span>';
+            } else {
+              pill.className = "status-pill status-inactive";
+              pill.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:#7A8580;"></span><span>ATTENDANCE: CLOSED</span>';
+            }
+          }
+        }
+      } catch (e) { /* projector keeps last known value on transient failures */ }
+    }
+
+    async function autoFindActiveSession() {
+      if (currentSessionId) {
+        renderProjectorQR(currentSessionId, currentToken);
+        pollProjectorStats();
+        setInterval(pollProjectorStats, 3000);
+        return;
+      }
+
+      // No session on screen: keep watching for one being activated in admin
+      try {
+        const evRes = await fetch('/api/events');
+        if (evRes.status === 401) {
+          // Staff session expired — the projector is a staff-only view
+          window.location.href = '/login';
+          return;
+        }
+        const evData = await evRes.json();
+        if (!evData.success || evData.events.length === 0) {
+          setTimeout(autoFindActiveSession, 5000);
+          return;
+        }
+
+        const eventId = evData.events[0].id;
+        document.getElementById("projEventName").textContent = evData.events[0].name;
+
+        const sRes = await fetch(`/api/sessions?event_id=${eventId}`);
+        const sData = await sRes.json();
+        if (!sData.success || sData.sessions.length === 0) {
+          setTimeout(autoFindActiveSession, 5000);
+          return;
+        }
+
+        const active = sData.sessions.find(s => s.is_active) || sData.sessions[0];
+        currentSessionId = active.id;
+        currentToken = active.session_token;
+
+        document.getElementById("projSessionTitle").textContent = active.name;
+        document.getElementById("projSessionTiming").textContent = `Date: ${active.session_date} | Window: ${active.start_time} - ${active.end_time}`;
+
+        renderProjectorQR(currentSessionId, currentToken);
+        pollProjectorStats();
+        setInterval(pollProjectorStats, 3000);
+      } catch (e) {
+        console.error("Auto session load error:", e);
+        setTimeout(autoFindActiveSession, 5000);
+      }
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {});
+        document.getElementById("btnFullscreenToggle").textContent = "Exit Fullscreen";
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen().catch(err => {});
+          document.getElementById("btnFullscreenToggle").textContent = "⛶ Fullscreen";
+        }
+      }
+    }
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === 'f' || e.key === 'F') {
+        toggleFullscreen();
+      }
+    });
+
+    autoFindActiveSession();
+  </script>
+</body>
+</html>

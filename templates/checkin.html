@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Participant Check-in // Cyber-Attend{% endblock %}
+
+{% block content %}
+<div class="checkin-hero">
+  <div class="checkin-card">
+    <!-- Header Banner -->
+    <div style="text-align: center; margin-bottom: 24px;">
+      <div class="brand-badge" style="margin-bottom: 12px;">
+        <span class="pulse-dot"></span>
+        <span>EVENT VENUE CHECK-IN</span>
+      </div>
+
+      <h2 id="checkinSessionTitle" style="font-size: 1.4rem; margin-bottom: 6px;">
+        {{ session_data.name if session_data else "Event Session Check-in" }}
+      </h2>
+
+      <div id="checkinEventSub" class="text-muted" style="font-size: 0.85rem;">
+        {{ session_data.event_name if session_data else "Scan common venue QR to check in" }}
+      </div>
+
+      <div style="margin-top: 10px;">
+        {% if session_data and session_data.is_active %}
+        <span id="sessionActiveBadge" class="status-pill status-active">
+          <span class="pulse-dot"></span> SESSION ACTIVE
+        </span>
+        {% else %}
+        <span id="sessionActiveBadge" class="status-pill status-inactive">
+          SESSION CLOSED / INACTIVE
+        </span>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Check-in Form -->
+    <form id="formCheckin">
+      <input type="hidden" id="checkinSessionId" value="{{ session_data.id if session_data else '' }}">
+
+      {% if not session_data %}
+      <div class="form-group">
+        <label class="form-label">Active Session ID</label>
+        <input type="number" id="manualSessionIdInput" class="form-control mono" placeholder="Enter session ID (from venue QR)" required>
+      </div>
+      {% endif %}
+
+      <div class="form-group">
+        <label class="form-label">Unique Participant ID</label>
+        <input type="text" id="participantIdInput" class="form-control mono" placeholder="Your unique event ID" required autofocus autocomplete="off" autocapitalize="characters" spellcheck="false" style="text-transform: uppercase; font-size: 1.05rem; letter-spacing: 0.05em;">
+        <small class="text-muted" style="font-size: 0.75rem;">Your unique event credentials assigned at registration</small>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Access PIN / Password</label>
+        <input type="password" id="participantPinInput" class="form-control mono" placeholder="Enter your personal Access PIN" required inputmode="numeric" autocomplete="current-password">
+        <small class="text-muted" style="font-size: 0.75rem;">Protects your identity from unauthorized check-in</small>
+      </div>
+
+      <button type="submit" id="btnSubmitCheckin" class="btn btn-neon" style="width: 100%; padding: 14px; font-size: 1rem; margin-top: 12px;">
+        VERIFY & MARK ATTENDANCE
+      </button>
+    </form>
+
+    <!-- Result Confirmation Box (Injected dynamically) -->
+    <div id="checkinResultBox" style="display: none;"></div>
+
+    <div style="margin-top: 24px; text-align: center; border-top: 1px solid var(--dark-border); padding-top: 16px;">
+      <a href="/participant" class="mono text-neon" style="font-size: 0.85rem; text-decoration: none;">
+        View My Attendance History ➔
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/checkin.js') }}"></script>
+{% endblock %}

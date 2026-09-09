@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#050807">
+  <title>{% block title %}Event Attendance Management Platform{% endblock %}</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23050807'/%3E%3Crect x='7' y='7' width='18' height='18' rx='3' fill='none' stroke='%2300FF66' stroke-width='2.5'/%3E%3Crect x='12' y='12' width='8' height='8' fill='%2300FF66'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="{{ url_for('static', filename='js/qrcode.min.js') }}"></script>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div class="app-container">
+    <header class="header-bar">
+      <div class="brand-section">
+        <div class="brand-badge">
+          <span class="pulse-dot"></span>
+          <span>CYBER-ATTEND // 2.6</span>
+        </div>
+        <div class="brand-title">
+          EVENT <span class="text-neon">ATTENDANCE</span> SYSTEM
+        </div>
+      </div>
+      <nav class="nav-links">
+        {% if session.get('staff_user') %}
+        <a href="/admin" class="nav-btn {% if request.path == '/admin' %}active{% endif %}">
+          <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v3A1.5 1.5 0 0 1 5.5 7h-3A1.5 1.5 0 0 1 1 5.5v-3zm8 0A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v3A1.5 1.5 0 0 1 13.5 7h-3A1.5 1.5 0 0 1 9 5.5v-3zm-8 8A1.5 1.5 0 0 1 2.5 9h3A1.5 1.5 0 0 1 7 10.5v3A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5v-3zm8 0A1.5 1.5 0 0 1 10.5 9h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3A1.5 1.5 0 0 1 9 13.5v-3z"/></svg>
+          Admin Console
+        </a>
+        <a href="/projector" class="nav-btn {% if request.path == '/projector' %}active{% endif %}">
+          <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M0 1.5A1.5 1.5 0 0 1 1.5 0h13A1.5 1.5 0 0 1 16 1.5v9A1.5 1.5 0 0 1 14.5 12h-13A1.5 1.5 0 0 1 0 10.5v-9zM1.5 1a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5v-9a.5.5 0 0 0-.5-.5h-13z"/><path d="M2 13.5a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5z"/></svg>
+          Venue Projector
+        </a>
+        {% endif %}
+        <a href="/checkin" class="nav-btn {% if request.path == '/checkin' %}active{% endif %}">
+          <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M11 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/><path fill-rule="evenodd" d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8zm8-7a7 7 0 0 0-5.468 11.37C3.242 11.226 4.805 10 8 10s4.757 1.225 5.468 2.37A7 7 0 0 0 8 1z"/></svg>
+          Participant Check-in
+        </a>
+        <a href="/participant" class="nav-btn {% if request.path == '/participant' %}active{% endif %}">
+          <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2zM9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5v2z"/><path d="M4.5 9a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zm0 2a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5z"/></svg>
+          Participant Portal
+        </a>
+        {% if session.get('staff_user') %}
+        <form method="POST" action="/logout" class="logout-form">
+          <button type="submit" class="nav-btn nav-btn-danger" title="End staff session">
+            <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M10 3.5a.5.5 0 0 0-.5-.5h-8a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h8a.5.5 0 0 0 .5-.5v-2a.5.5 0 0 1 1 0v2A1.5 1.5 0 0 1 9.5 14h-8A1.5 1.5 0 0 1 0 12.5v-9A1.5 1.5 0 0 1 1.5 2h8A1.5 1.5 0 0 1 11 3.5v2a.5.5 0 0 1-1 0v-2z"/><path d="M4.146 8.354a.5.5 0 0 1 0-.708l3-3a.5.5 0 1 1 .708.708L5.707 7.5H14.5a.5.5 0 0 1 0 1H5.707l2.147 2.146a.5.5 0 0 1-.708.708l-3-3z"/></svg>
+            Logout ({{ session.get('staff_user') }})
+          </button>
+        </form>
+        {% else %}
+        <a href="/login" class="nav-btn nav-btn-staff {% if request.path == '/login' %}active{% endif %}">
+          <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M6 3.5a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 0-1 0v2A1.5 1.5 0 0 0 6.5 14h8a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 14.5 2h-8A1.5 1.5 0 0 0 5 3.5v2a.5.5 0 0 0 1 0v-2z"/><path d="M11.854 8.354a.5.5 0 0 0 0-.708l-3-3a.5.5 0 1 0-.708.708L10.293 7.5H1.5a.5.5 0 0 0 0 1h8.793l-2.147 2.146a.5.5 0 0 0 .708.708l3-3z"/></svg>
+          Staff Login
+        </a>
+        {% endif %}
+      </nav>
+    </header>
+
+    <main>
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script>
+    // Global Toast Notification Helper
+    function showToast(message, type = 'success', duration = 4000) {
+      const container = document.getElementById('toastContainer');
+      if (!container) return;
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      
+      let icon = '✓';
+      if (type === 'error') icon = '✕';
+      if (type === 'warning') icon = '⚠';
+
+      // Render via textContent so server-provided messages can never inject HTML
+      const iconSpan = document.createElement('span');
+      iconSpan.style.cssText = 'font-weight:bold; font-size:1.1rem;';
+      iconSpan.textContent = icon;
+      const msgSpan = document.createElement('span');
+      msgSpan.textContent = message;
+      toast.appendChild(iconSpan);
+      toast.appendChild(msgSpan);
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(10px)';
+        toast.style.transition = 'all 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+      }, duration);
+    }
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

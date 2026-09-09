@@ -1,0 +1,575 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Attendance Console // Cyber-Attend{% endblock %}
+
+{% block content %}
+<!-- Top Event & Session Bar -->
+<div class="card" style="margin-bottom: 24px; padding: 18px 24px;">
+  <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px;">
+    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 14px;">
+      <div>
+        <label class="form-label" style="margin-bottom: 4px;">Active Event</label>
+        {% if events %}
+        <select id="eventSelect" class="form-control mono" style="min-width: 260px; padding: 8px 12px;">
+          {% for ev in events %}
+          <option value="{{ ev.id }}" {% if loop.first %}selected{% endif %}>{{ ev.event_code }} - {{ ev.name }}</option>
+          {% endfor %}
+        </select>
+        {% else %}
+        <select id="eventSelect" class="form-control mono" style="min-width: 260px; padding: 8px 12px;" disabled>
+          <option value="">No events yet — create one</option>
+        </select>
+        {% endif %}
+      </div>
+
+      <div>
+        <label class="form-label" style="margin-bottom: 4px;">Active Session</label>
+        <select id="sessionSelect" class="form-control mono" style="min-width: 280px; padding: 8px 12px;">
+          <option value="">Loading sessions...</option>
+        </select>
+      </div>
+
+      <button id="btnNewSession" class="btn btn-secondary btn-sm" style="align-self: flex-end; margin-bottom: 2px;">
+        + New Session
+      </button>
+      <button id="btnNewEvent" class="btn btn-secondary btn-sm" style="align-self: flex-end; margin-bottom: 2px;">
+        + New Event
+      </button>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <div id="sessionStatusBadge" class="status-pill status-inactive">
+        <span class="pulse-dot" style="background:#7A8580; box-shadow:none;"></span>
+        <span>SESSION: CLOSED</span>
+      </div>
+
+      <button id="btnToggleAttendance" class="btn btn-neon btn-sm">
+        ACTIVATE ATTENDANCE
+      </button>
+
+      <a id="btnOpenProjector" href="/projector" target="_blank" class="btn btn-outline-neon btn-sm">
+        Launch Venue Projector ↗
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- Key Performance Indicators (KPI Cards) -->
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">Total Registered</div>
+    <div id="kpiRegistered" class="kpi-value">--</div>
+    <div class="kpi-sub">Total event roster</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Total Present</div>
+    <div id="kpiPresent" class="kpi-value neon">--</div>
+    <div class="kpi-sub">Verified check-ins</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Total Absent</div>
+    <div id="kpiAbsent" class="kpi-value">--</div>
+    <div class="kpi-sub">Pending check-in</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Attendance %</div>
+    <div id="kpiPercentage" class="kpi-value neon">--%</div>
+    <div class="kpi-sub">Turnout rate</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Total Check-ins</div>
+    <div id="kpiCheckins" class="kpi-value">--</div>
+    <div class="kpi-sub">Processed logs</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Late Arrivals</div>
+    <div id="kpiLate" class="kpi-value amber">--</div>
+    <div class="kpi-sub">Past grace threshold</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Duplicate Attempts</div>
+    <div id="kpiDuplicates" class="kpi-value amber">--</div>
+    <div class="kpi-sub">Blocked by unique DB</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Invalid Attempts</div>
+    <div id="kpiInvalid" class="kpi-value danger">--</div>
+    <div class="kpi-sub">Auth / inactive fails</div>
+  </div>
+</div>
+
+<!-- Tabs Navigation -->
+<div class="tabs-nav">
+  <button class="tab-btn active" data-tab="tabLive">
+    <svg width="15" height="15" fill="currentColor" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3.5a.5.5 0 0 1-.5-.5v-3.5A.5.5 0 0 1 8 4z"/></svg>
+    Live Attendance & QR Station
+  </button>
+  <button class="tab-btn" data-tab="tabAnalytics">
+    <svg width="15" height="15" fill="currentColor" viewBox="0 0 16 16"><path d="M1 11a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1v-3zm6-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V7zm6-5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1V2z"/></svg>
+    Analytics & Visualizations
+  </button>
+  <button class="tab-btn" data-tab="tabParticipants">
+    <svg width="15" height="15" fill="currentColor" viewBox="0 0 16 16"><path d="M15 14s1 0 1-1-1-4-5-4-5 3-5 4 1 1 1 1h8zm-7.978-1A.261.261 0 0 1 7 12.996c.001-.264.167-1.03.76-1.72C8.312 10.629 9.282 10 11 10c1.717 0 2.687.63 3.24 1.276.593.69.758 1.457.76 1.72l-.008.002-.014.002H7.022zM11 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm3-2a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM6.936 9.28a5.88 5.88 0 0 0-1.23-.247A7.35 7.35 0 0 0 5 9c-4 0-5 3-5 4h4.216A2.238 2.238 0 0 1 5 13c0-1.01.377-2.042 1.09-2.904.243-.294.526-.569.846-.816zM4.92 10A5.493 5.493 0 0 0 4 13H1c0-.26.164-1.03.76-1.724.545-.636 1.492-1.256 3.16-1.275zM1.5 5.5a3 3 0 1 1 6 0 3 3 0 0 1-6 0zm3-2a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>
+    Participant Directory & History
+  </button>
+  <button class="tab-btn" data-tab="tabSessions">
+    <svg width="15" height="15" fill="currentColor" viewBox="0 0 16 16"><path d="M14 0H2a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2zM1 3.857C1 3.384 1.448 3 2 3h12c.552 0 1 .384 1 .857v10.286c0 .473-.448.857-1 .857H2c-.552 0-1-.384-1-.857V3.857z"/><path d="M6.5 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-3 3a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/></svg>
+    Sessions & Event Setup
+  </button>
+  <button class="tab-btn" data-tab="tabExport">
+    <svg width="15" height="15" fill="currentColor" viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
+    Export & Reports
+  </button>
+</div>
+
+<!-- TAB 1: LIVE ATTENDANCE & QR STATION -->
+<div id="tabLive" class="tab-pane active">
+  <div class="live-station-grid">
+    <!-- Single Common Session QR Station -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <span class="pulse-dot"></span>
+          Common Attendance QR Code
+        </div>
+        <button id="btnRegenerateQR" class="btn btn-secondary btn-sm" title="Regenerate QR token">
+          ↻ Refresh
+        </button>
+      </div>
+
+      <div class="qr-box-wrap">
+        <div id="adminQrCanvas" class="qr-canvas-container"></div>
+        <div style="margin-top: 18px; text-align: center;">
+          <div id="qrSessionName" style="font-weight: 700; font-size: 1.05rem; margin-bottom: 4px;">--</div>
+          <div id="qrTimingInfo" class="mono text-muted" style="font-size: 0.8rem;">--</div>
+        </div>
+      </div>
+
+      <div style="margin-top: 20px; display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; gap: 10px;">
+          <button id="btnCopyCheckinLink" class="btn btn-secondary" style="flex: 1;">
+            Copy Check-in URL
+          </button>
+          <button id="btnDownloadQR" class="btn btn-outline-neon" style="flex: 1;">
+            Download QR
+          </button>
+        </div>
+        <p class="text-dim" style="font-size: 0.75rem; text-align: center;">
+          ⚡ Only 1 common QR code is projected for all participants. Each participant is authenticated via their unique credentials.
+        </p>
+      </div>
+    </div>
+
+    <!-- Live Real-Time Check-in Feed -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <svg width="18" height="18" fill="var(--neon-green)" viewBox="0 0 16 16"><path d="M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71V3.5z"/><path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z"/></svg>
+          Live Check-in Stream
+        </div>
+        <span class="mono text-muted" style="font-size: 0.8rem;">Auto-refreshing (3s)</span>
+      </div>
+
+      <div class="data-table-wrap" style="max-height: 480px; overflow-y: auto;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Participant ID</th>
+              <th>Name</th>
+              <th>Organization</th>
+              <th>Status</th>
+              <th>Gate</th>
+            </tr>
+          </thead>
+          <tbody id="liveFeedBody">
+            <tr><td colspan="6" style="text-align: center; color: var(--muted-gray);">No check-in records found.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: ANALYTICS & VISUALIZATIONS -->
+<div id="tabAnalytics" class="tab-pane">
+  <div class="analytics-charts-grid">
+    <!-- Attendance Over Time -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Attendance Velocity (Over Time)</div>
+        <span class="mono text-neon" style="font-size: 0.8rem;">15-min Intervals</span>
+      </div>
+      <div style="height: 240px; position: relative;" id="chartTimelineContainer">
+        <canvas id="canvasTimeline" width="500" height="240"></canvas>
+      </div>
+    </div>
+
+    <!-- Session-wise Attendance -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Session-wise Attendance Rate</div>
+        <span class="mono text-muted" style="font-size: 0.8rem;">Comparison</span>
+      </div>
+      <div style="height: 240px; position: relative;" id="chartSessionsContainer">
+        <canvas id="canvasSessions" width="500" height="240"></canvas>
+      </div>
+    </div>
+
+    <!-- Present vs Absent Donut -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Present vs Absent Ratio</div>
+        <span id="txtPeakPeriod" class="mono text-neon" style="font-size: 0.8rem;">Peak: --</span>
+      </div>
+      <div style="display: flex; align-items: center; justify-content: space-around; height: 240px;">
+        <canvas id="canvasDonut" width="220" height="220"></canvas>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="width: 12px; height: 12px; background: var(--neon-green); border-radius: 2px;"></span>
+              <span class="text-muted" style="font-size: 0.85rem;">Present (On-Time)</span>
+            </div>
+            <div id="donutPresentVal" class="mono text-neon" style="font-size: 1.3rem; font-weight: 700; margin-left: 20px;">0</div>
+          </div>
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="width: 12px; height: 12px; background: var(--amber-warning); border-radius: 2px;"></span>
+              <span class="text-muted" style="font-size: 0.85rem;">Late Arrivals</span>
+            </div>
+            <div id="donutLateVal" class="mono" style="color: var(--amber-warning); font-size: 1.3rem; font-weight: 700; margin-left: 20px;">0</div>
+          </div>
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="width: 12px; height: 12px; background: #323b37; border-radius: 2px;"></span>
+              <span class="text-muted" style="font-size: 0.85rem;">Absent</span>
+            </div>
+            <div id="donutAbsentVal" class="mono text-muted" style="font-size: 1.3rem; font-weight: 700; margin-left: 20px;">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Telemetry & Integrity Audit -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Security & Gate Telemetry</div>
+        <span class="status-pill status-active">ENFORCED</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 16px; justify-content: center; height: 240px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: rgba(5,8,7,0.5); border: 1px solid var(--dark-border); border-radius: 8px;">
+          <div>
+            <div style="font-weight: 600;">Database Unique Constraint</div>
+            <div class="text-muted" style="font-size: 0.75rem;">UNIQUE(participant_id, session_id)</div>
+          </div>
+          <span class="status-pill status-present">ACTIVE</span>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: rgba(5,8,7,0.5); border: 1px solid var(--dark-border); border-radius: 8px;">
+          <div>
+            <div style="font-weight: 600;">Blocked Duplicate Attempts</div>
+            <div class="text-muted" style="font-size: 0.75rem;">Prevented multiple logs for same participant</div>
+          </div>
+          <span id="auditDupCount" class="mono" style="color: var(--amber-warning); font-weight: 700; font-size: 1.1rem;">0</span>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: rgba(5,8,7,0.5); border: 1px solid var(--dark-border); border-radius: 8px;">
+          <div>
+            <div style="font-weight: 600;">Invalid Credentials / Inactive Rejections</div>
+            <div class="text-muted" style="font-size: 0.75rem;">Rejected unauthorized or closed check-ins</div>
+          </div>
+          <span id="auditInvalidCount" class="mono" style="color: var(--crimson-danger); font-weight: 700; font-size: 1.1rem;">0</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 3: PARTICIPANT DIRECTORY & HISTORY -->
+<div id="tabParticipants" class="tab-pane">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Participant Registry & History Audit</div>
+      <div style="display: flex; gap: 10px;">
+        <button id="btnOpenAddParticipant" class="btn btn-neon btn-sm">+ Add Participant</button>
+        <button id="btnOpenBulkParticipant" class="btn btn-secondary btn-sm">Bulk Import</button>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 14px; margin-bottom: 18px; flex-wrap: wrap;">
+      <input type="text" id="participantSearchInput" class="form-control mono" placeholder="Search by Participant ID, Name, Email, or College..." style="flex: 1; min-width: 280px;">
+      <select id="participantOrgFilter" class="form-control" style="width: 220px;">
+        <option value="ALL">All Organizations / Colleges</option>
+      </select>
+    </div>
+
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Participant ID</th>
+            <th>Full Name</th>
+            <th>Email</th>
+            <th>College / Organization</th>
+            <th>Registered At</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="participantTableBody">
+          <tr><td colspan="6" style="text-align: center; color: var(--muted-gray);">Loading directory...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 4: SESSIONS & EVENT SETUP -->
+<div id="tabSessions" class="tab-pane">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Configured Sessions</div>
+      <button id="btnCreateSessionTab" class="btn btn-neon btn-sm">+ Create New Session</button>
+    </div>
+
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Session Name</th>
+            <th>Date</th>
+            <th>Time Window</th>
+            <th>Late Grace Threshold</th>
+            <th>Status</th>
+            <th>Total Check-ins</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="sessionsTableBody">
+          <tr><td colspan="7" style="text-align: center; color: var(--muted-gray);">Loading sessions...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 5: EXPORT & REPORTS -->
+<div id="tabExport" class="tab-pane">
+  <div class="card" style="max-width: 760px; margin: 0 auto;">
+    <div class="card-header">
+      <div class="card-title">
+        <svg width="18" height="18" fill="var(--neon-green)" viewBox="0 0 16 16"><path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2zM9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5v2z"/></svg>
+        Attendance Export & Audit Reports
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+      <p class="text-muted" style="font-size: 0.9rem;">
+        Generate and download official verified attendance reports with full audit logs, exact authoritative timestamps, scanner IDs, and status.
+      </p>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div class="form-group">
+          <label class="form-label">Filter Session</label>
+          <select id="exportSessionSelect" class="form-control">
+            <option value="">All Sessions in Event</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Status Filter</label>
+          <select id="exportStatusSelect" class="form-control">
+            <option value="ALL">All Statuses (Present & Late)</option>
+            <option value="Present">Present Only (On-Time)</option>
+            <option value="Late">Late Arrivals Only</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 10px;">
+        <button id="btnDownloadCSV" class="btn btn-secondary" style="padding: 16px;">
+          <svg width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
+          Export CSV
+        </button>
+
+        <button id="btnDownloadExcel" class="btn btn-secondary" style="padding: 16px;">
+          <svg width="20" height="20" fill="#00FF66" viewBox="0 0 16 16"><path d="M5.884 6.68a.5.5 0 1 0-.768.64L7.349 10l-2.233 2.68a.5.5 0 0 0 .768.64L8 10.748l2.116 2.572a.5.5 0 0 0 .768-.64L8.651 10l2.233-2.68a.5.5 0 0 0-.768-.64L8 9.252 5.884 6.68z"/><path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2zM9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5v2z"/></svg>
+          Export Excel (.xlsx)
+        </button>
+
+        <button id="btnDownloadPDF" class="btn btn-neon" style="padding: 16px;">
+          <svg width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2zM9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5v2z"/></svg>
+          Export Audit PDF
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MODALS ================= -->
+
+<!-- Participant Complete Attendance History Modal -->
+<div id="modalParticipantHistory" class="modal-overlay">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="card-title" id="historyModalTitle">Participant Attendance Record</div>
+      <button class="modal-close" onclick="closeModal('modalParticipantHistory')">&times;</button>
+    </div>
+    <div class="modal-body" id="historyModalBody">
+      <!-- Injected via JavaScript -->
+    </div>
+  </div>
+</div>
+
+<!-- Create New Session Modal -->
+<div id="modalNewSession" class="modal-overlay">
+  <div class="modal-card" style="max-width: 520px;">
+    <div class="modal-header">
+      <div class="card-title">+ Create Event Session</div>
+      <button class="modal-close" onclick="closeModal('modalNewSession')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="formCreateSession">
+        <div class="form-group">
+          <label class="form-label">Session Name</label>
+          <input type="text" id="sessionNameInput" class="form-control" placeholder="e.g. AI Keynote & Vision" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Session Date</label>
+          <input type="date" id="sessionDateInput" class="form-control mono" required>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+          <div class="form-group">
+            <label class="form-label">Start Time</label>
+            <input type="time" id="sessionStartInput" class="form-control mono" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">End Time</label>
+            <input type="time" id="sessionEndInput" class="form-control mono" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Late Arrival Grace Period (Minutes)</label>
+          <input type="number" id="sessionGraceInput" class="form-control mono" value="15" min="0" max="120">
+        </div>
+        <button type="submit" class="btn btn-neon" style="width: 100%; margin-top: 10px;">
+          Save & Register Session
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Create New Event Modal -->
+<div id="modalNewEvent" class="modal-overlay">
+  <div class="modal-card" style="max-width: 520px;">
+    <div class="modal-header">
+      <div class="card-title">+ Create New Event</div>
+      <button class="modal-close" onclick="closeModal('modalNewEvent')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="formCreateEvent">
+        <div class="form-group">
+          <label class="form-label">Event Name</label>
+          <input type="text" id="eventNameInput" class="form-control" placeholder="e.g. TECHSTAR 2026 Summit" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Event Code (Unique)</label>
+          <input type="text" id="eventCodeInput" class="form-control mono" placeholder="e.g. TECHSTAR-26" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Venue / Hall</label>
+          <input type="text" id="eventVenueInput" class="form-control" placeholder="e.g. Main Convention Lab">
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+          <div class="form-group">
+            <label class="form-label">Start Date</label>
+            <input type="date" id="eventStartInput" class="form-control mono" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">End Date</label>
+            <input type="date" id="eventEndInput" class="form-control mono" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea id="eventDescInput" class="form-control" rows="2" placeholder="Brief event objective..."></textarea>
+        </div>
+        <button type="submit" class="btn btn-neon" style="width: 100%; margin-top: 10px;">
+          Create Event
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Add Single Participant Modal -->
+<div id="modalAddParticipant" class="modal-overlay">
+  <div class="modal-card" style="max-width: 520px;">
+    <div class="modal-header">
+      <div class="card-title">+ Register Participant</div>
+      <button class="modal-close" onclick="closeModal('modalAddParticipant')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="formAddParticipant">
+        <div class="form-group">
+          <label class="form-label">Participant Unique ID</label>
+          <input type="text" id="partIdInput" class="form-control mono" placeholder="e.g. EVENT-26-00001" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Full Name</label>
+          <input type="text" id="partNameInput" class="form-control" placeholder="e.g. Alex Morgan" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email Address</label>
+          <input type="email" id="partEmailInput" class="form-control" placeholder="e.g. alex.morgan@example.com" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">College / Organization</label>
+          <input type="text" id="partOrgInput" class="form-control" placeholder="e.g. Stanford University">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Access PIN / Password</label>
+          <input type="password" id="partPinInput" class="form-control mono" placeholder="Set a PIN for this participant" required>
+          <small class="text-muted">Used by the participant to authenticate during check-in — share it only with them</small>
+        </div>
+        <button type="submit" class="btn btn-neon" style="width: 100%; margin-top: 10px;">
+          Register Participant
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Import Participants Modal -->
+<div id="modalBulkParticipant" class="modal-overlay">
+  <div class="modal-card" style="max-width: 600px;">
+    <div class="modal-header">
+      <div class="card-title">Bulk Participant Import (CSV / Roster)</div>
+      <button class="modal-close" onclick="closeModal('modalBulkParticipant')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="text-muted" style="font-size: 0.85rem; margin-bottom: 12px;">
+        Paste comma-separated rows: <code>ParticipantID, FullName, Email, Organization, PIN</code> — use a unique PIN per participant (no default).
+      </p>
+      <div class="form-group">
+        <textarea id="bulkDataInput" class="form-control mono" rows="8" placeholder="TECHSTAR-26-00901, Samantha Reed, sam@mit.edu, MIT, 4821
+TECHSTAR-26-00902, David Chen, dchen@cmu.edu, Carnegie Mellon, 9034"></textarea>
+      </div>
+      <button id="btnSubmitBulk" class="btn btn-neon" style="width: 100%;">
+        Import Roster
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+{% endblock %}
