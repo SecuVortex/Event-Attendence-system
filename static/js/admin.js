@@ -293,10 +293,11 @@ function renderAdminQR() {
 async function toggleSessionAttendance() {
   if (!currentSessionData) return;
   try {
+    const nextState = currentSessionData.is_active ? 0 : 1;
     const res = await fetchWithAuth(`/api/sessions/${currentSessionData.id}/toggle`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({})
+      body: JSON.stringify({ is_active: nextState })
     });
     const data = await res.json();
     if (data.success) {

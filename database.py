@@ -135,15 +135,36 @@ class DBConnection:
         return cur
 
 
+def clean_database_url(raw_url: str) -> str:
+    """Normalize and auto-heal database URLs for Render & Supabase compatibility."""
+    if not raw_url:
+        return ""
+    url = raw_url.strip().strip('"').strip("'")
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+
+    # Auto-fix: If pointing to Supabase direct host (which fails on Render's IPv4 network),
+    # automatically rewrite to the IPv4 session pooler!
+    if "db.jduahrjswaivzhebuonk.supabase.co" in url:
+        url = url.replace("db.jduahrjswaivzhebuonk.supabase.co:5432", "aws-0-ap-southeast-1.pooler.supabase.com:5432")
+        url = url.replace("db.jduahrjswaivzhebuonk.supabase.co", "aws-0-ap-southeast-1.pooler.supabase.com:5432")
+        if "postgres:" in url and "postgres.jduahrjswaivzhebuonk" not in url:
+            url = url.replace("postgres:", "postgres.jduahrjswaivzhebuonk:", 1)
+
+    # Auto-fix unencoded special characters in password: 65+!5MLE&5uK-9E
+    if "65+!5MLE&5uK-9E" in url:
+        url = url.replace("65+!5MLE&5uK-9E", "65%2B%215MLE%265uK-9E")
+
+    return url
+
+
 _DB_POOL = None
 
 def get_db_pool():
     global _DB_POOL
     if _DB_POOL is None:
-        db_url = os.environ.get("DATABASE_URL")
+        db_url = clean_database_url(os.environ.get("DATABASE_URL", ""))
         if db_url and psycopg2:
-            if db_url.startswith("postgres://"):
-                db_url = db_url.replace("postgres://", "postgresql://", 1)
             try:
                 _DB_POOL = psycopg2.pool.ThreadedConnectionPool(
                     minconn=2,
@@ -151,7 +172,9 @@ def get_db_pool():
                     dsn=db_url,
                     cursor_factory=psycopg2.extras.RealDictCursor
                 )
-            except Exception:
+                print(f"[DATABASE] Connection pool initialized for PostgreSQL ({db_url.split('@')[-1] if '@' in db_url else 'custom'})")
+            except Exception as e:
+                print(f"[ERROR] Failed to initialize connection pool: {e}")
                 _DB_POOL = None
     return _DB_POOL
 
@@ -163,15 +186,13 @@ def get_db_connection():
     Otherwise, falls back to local SQLite (attendance.db) for offline development.
     """
     load_env_file()
-    db_url = os.environ.get("DATABASE_URL")
+    db_url = clean_database_url(os.environ.get("DATABASE_URL", ""))
     if db_url and psycopg2:
         pool = get_db_pool()
         if pool:
             raw_conn = pool.getconn()
             return DBConnection(raw_conn, is_postgres=True)
         else:
-            if db_url.startswith("postgres://"):
-                db_url = db_url.replace("postgres://", "postgresql://", 1)
             raw_conn = psycopg2.connect(db_url, cursor_factory=psycopg2.extras.RealDictCursor)
             return DBConnection(raw_conn, is_postgres=True)
     else:

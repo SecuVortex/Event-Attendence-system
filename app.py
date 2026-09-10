@@ -356,9 +356,32 @@ def api_create_session():
 @app.route("/api/sessions/<int:session_id>/toggle", methods=["POST"])
 @staff_required
 def api_toggle_session(session_id):
-    data = request.get_json(silent=True) or {}
-    is_active = data.get("is_active")
-    new_state = db.toggle_session_attendance(session_id, is_active)
+    is_active = None
+    try:
+        if request.is_json:
+            data = request.get_json(silent=True) or {}
+            is_active = data.get("is_active")
+        elif request.data:
+            import json
+            try:
+                data = json.loads(request.data.decode("utf-8", errors="ignore"))
+                is_active = data.get("is_active")
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    if is_active is None and "is_active" in request.form:
+        is_active = request.form.get("is_active")
+    if is_active is None and "is_active" in request.args:
+        is_active = request.args.get("is_active")
+
+    try:
+        new_state = db.toggle_session_attendance(session_id, is_active)
+    except Exception as e:
+        print(f"[ERROR] db.toggle_session_attendance failed: {e}")
+        return jsonify({"success": False, "message": f"Database error: {str(e)}"}), 500
+
     if new_state is None:
         return jsonify({"success": False, "message": "Session not found."}), 404
     return jsonify({
