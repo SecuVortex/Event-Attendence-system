@@ -34,14 +34,36 @@
 
       <div class="form-group">
         <label class="form-label" for="password">Staff Password</label>
-        <input type="password" id="password" name="password" class="form-control mono"
-               placeholder="Enter staff password" required autocomplete="current-password">
+        <div style="position: relative;">
+          <input type="password" id="password" name="password" class="form-control mono"
+                 placeholder="Enter staff password" required autocomplete="current-password" style="padding-right: 48px;">
+          <button type="button" id="btnTogglePassword" aria-label="Toggle password visibility"
+                  style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--muted-gray); cursor: pointer; padding: 6px; font-size: 0.9rem;">
+            👁
+          </button>
+        </div>
       </div>
 
       <button type="submit" class="btn btn-neon" style="width: 100%; padding: 14px; font-size: 1rem; margin-top: 10px;">
         AUTHENTICATE & ENTER CONSOLE
       </button>
     </form>
+
+    <script>
+      const btnToggle = document.getElementById('btnTogglePassword');
+      const passInput = document.getElementById('password');
+      if (btnToggle && passInput) {
+        btnToggle.addEventListener('click', () => {
+          if (passInput.type === 'password') {
+            passInput.type = 'text';
+            btnToggle.textContent = '🔒';
+          } else {
+            passInput.type = 'password';
+            btnToggle.textContent = '👁';
+          }
+        });
+      }
+    </script>
 
     <div style="margin-top: 24px; text-align: center; border-top: 1px solid var(--dark-border); padding-top: 16px;">
       <a href="/participant" class="mono text-neon" style="font-size: 0.85rem; text-decoration: none;">

@@ -12,5 +12,8 @@ services:
         syncValue: false
       - key: ADMIN_PASSWORD
         syncValue: false
+      - key: DATABASE_URL
+        syncValue: false
       - key: PYTHON_VERSION
         value: 3.12.6
+

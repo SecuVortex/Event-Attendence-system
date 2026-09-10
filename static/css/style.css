@@ -787,6 +787,104 @@ h1, h2, h3, h4, h5, h6 {
   gap: 24px;
 }
 
+/* ----------------- PARTICIPANT PORTAL RESPONSIVE COMPONENTS ----------------- */
+.participant-lookup-form {
+  display: grid;
+  grid-template-columns: 2fr 1.2fr auto;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.participant-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--dark-border);
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.turnout-badge-box {
+  text-align: right;
+  background: rgba(0, 255, 102, 0.06);
+  border: 1px solid var(--neon-green);
+  padding: 14px 20px;
+  border-radius: 12px;
+  box-shadow: var(--glow-sm);
+  min-width: 170px;
+}
+
+.participant-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.metric-box {
+  padding: 14px;
+  background: #050807;
+  border: 1px solid var(--dark-border);
+  border-radius: 8px;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.metric-box:hover {
+  border-color: rgba(0, 255, 102, 0.4);
+  transform: translateY(-2px);
+}
+
+/* ----------------- MOBILE BOTTOM NAVIGATION BAR ----------------- */
+.mobile-bottom-bar {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(5, 8, 7, 0.96);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--dark-border);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.7);
+  z-index: 1000;
+  padding: 8px 16px calc(8px + env(safe-area-inset-bottom, 0px));
+  justify-content: space-around;
+  align-items: center;
+}
+
+.mobile-nav-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted-gray);
+  text-decoration: none;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  min-width: 60px;
+}
+
+.mobile-nav-link svg {
+  transition: transform 0.2s ease;
+}
+
+.mobile-nav-link.active {
+  color: var(--neon-green);
+  text-shadow: var(--glow-sm);
+}
+
+.mobile-nav-link.active svg {
+  transform: translateY(-2px);
+  filter: drop-shadow(0 0 6px var(--neon-green));
+}
+
+/* ----------------- COMPREHENSIVE RESPONSIVE MEDIA QUERIES ----------------- */
 @media (max-width: 992px) {
   .live-station-grid {
     grid-template-columns: 1fr;
@@ -794,64 +892,163 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 @media (max-width: 768px) {
+  /* Switch header nav to mobile bottom dock */
+  .desktop-nav {
+    display: none !important;
+  }
+  .mobile-bottom-bar {
+    display: flex;
+  }
+
   .app-container {
     padding: 12px;
+    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
   }
+
   .header-bar {
-    flex-direction: column;
-    gap: 16px;
-    align-items: flex-start;
+    flex-direction: row;
+    justify-content: space-between;
+    padding: 12px 16px;
+    margin-bottom: 16px;
   }
-  .nav-links {
+
+  .brand-title {
+    font-size: 1.05rem;
+  }
+
+  .brand-badge {
+    padding: 4px 8px;
+    font-size: 0.72rem;
+  }
+
+  /* Form & Input Optimizations (Prevents iOS zoom) */
+  .form-control, input, select, textarea {
+    font-size: 16px !important;
+    min-height: 46px;
+  }
+
+  .btn {
+    min-height: 46px;
+    font-size: 0.95rem;
+  }
+
+  /* Participant Lookup Form Stack */
+  .participant-lookup-form {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .participant-lookup-form .field-submit button {
     width: 100%;
-    flex-wrap: wrap;
-    row-gap: 8px;
   }
+
+  .participant-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .turnout-badge-box {
+    text-align: center !important;
+    width: 100%;
+  }
+
+  /* Dashboard KPIs */
   .kpi-grid {
     grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
+    gap: 10px;
   }
+
+  .kpi-card {
+    padding: 14px;
+  }
+
+  .kpi-value {
+    font-size: 1.8rem;
+  }
+
   .analytics-charts-grid {
     grid-template-columns: 1fr;
     gap: 16px;
   }
-  .checkin-hero {
-    margin: 16px auto;
-    padding: 8px;
-  }
-  .checkin-card {
-    padding: 22px 18px;
-  }
-}
 
-@media (max-width: 768px) {
   .tabs-nav {
-    flex-wrap: wrap;
-    overflow-x: visible;
+    display: flex;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+  .tabs-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab-btn {
+    white-space: nowrap;
+    padding: 10px 14px;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+  }
+
+  /* Check-in & Login Card Hero Adjustments */
+  .checkin-hero, .login-hero {
+    margin: 8px auto;
+    padding: 4px;
+  }
+
+  .checkin-card, .login-card {
+    padding: 22px 16px;
+    border-radius: 12px;
   }
 }
 
 @media (max-width: 480px) {
+  .brand-title {
+    display: none; /* Keep header ultra clean on 360-400px phone screens */
+  }
+
+  .brand-section {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .participant-metrics-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .participant-metrics-grid .metric-box {
+    padding: 10px 6px;
+  }
+
+  .participant-metrics-grid .metric-box .mono {
+    font-size: 1.25rem !important;
+  }
+
+  .participant-metrics-grid .metric-box .text-muted {
+    font-size: 0.65rem !important;
+  }
+
   .kpi-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
   }
+
   .kpi-value {
-    font-size: 1.7rem;
-  }
-  .tab-btn {
-    padding: 10px 14px;
-    font-size: 0.85rem;
+    font-size: 1.5rem;
   }
 }
 
-/* Intentional scroll affordance for wide tables on small screens */
+/* Intentional touch-friendly scroll affordance for wide data tables */
 .data-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   scrollbar-color: var(--neon-green) rgba(18, 59, 39, 0.4);
+  border-radius: 8px;
 }
 
 .data-table-wrap::-webkit-scrollbar {
-  height: 8px;
+  height: 6px;
 }
 
 .data-table-wrap::-webkit-scrollbar-track {
@@ -863,4 +1060,5 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--neon-green);
   border-radius: 4px;
 }
+
 

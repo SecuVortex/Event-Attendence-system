@@ -15,6 +15,10 @@ Tests:
 
 import os
 import io
+import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
 from database import (
     get_db_connection, create_event, create_session, toggle_session_attendance,
     register_participant, authenticate_participant, process_attendance_checkin,
@@ -22,6 +26,12 @@ from database import (
 )
 
 def test_full_system():
+    # Clean up any leftover test data
+    conn = get_db_connection()
+    conn.execute("DELETE FROM events WHERE event_code = 'GADC-26'")
+    conn.commit()
+    conn.close()
+
     print("--- 1. Testing Event & Session Creation ---")
     event_id = create_event(
         name="Global AI DevCon 2026",

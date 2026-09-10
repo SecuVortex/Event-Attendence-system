@@ -8,28 +8,69 @@ import os
 import io
 import csv
 import functools
+import secrets
+import hashlib
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, send_file, Response, redirect, url_for, session
 
 import database as db
 
+# Ensure environment variables are loaded
+db.load_env_file()
+
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "event_attendance_cyber_secret_2026")
-app.permanent_session_lifetime = timedelta(hours=8)  # staff sessions expire after 8 hours
+
+# Cryptographic session secret key: never fallback to static weak strings
+app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
+
+# Session cookie hardening against XSS, MITM, and CSRF attacks
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,       # Blocks JavaScript access (XSS defense)
+    SESSION_COOKIE_SAMESITE="Lax",      # Prevents Cross-Site Request Forgery (CSRF)
+    SESSION_COOKIE_SECURE="RENDER" in os.environ or os.environ.get("FLASK_ENV") == "production",  # Enforce HTTPS on cloud
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=6)
+)
 
 # Ensure database is initialized on startup
 db.init_db()
 
 # ----------------- STAFF AUTHENTICATION (ADMIN PORTAL SECURITY) -----------------
 
-# Bootstrap the staff account from environment variables (or local dev defaults).
-# On Render, set ADMIN_USERNAME / ADMIN_PASSWORD in the dashboard to control access.
-_BOOTSTRAP_ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
-_BOOTSTRAP_ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
+# Bootstrap the staff account from environment variables
+_BOOTSTRAP_ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME")
+_BOOTSTRAP_ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
 if _BOOTSTRAP_ADMIN_USERNAME and _BOOTSTRAP_ADMIN_PASSWORD:
-    db.create_staff_user(_BOOTSTRAP_ADMIN_USERNAME, _BOOTSTRAP_ADMIN_PASSWORD)
+    db.create_staff_user(_BOOTSTRAP_ADMIN_USERNAME, _BOOTSTRAP_ADMIN_PASSWORD, display_name="Lead SecOps Administrator")
 
-DEFAULT_ADMIN_NOTE = "Default local credentials: admin / admin123 — set ADMIN_USERNAME and ADMIN_PASSWORD environment variables before deploying."
+# ----------------- CYBER DEFENSE: ANTI-BRUTE FORCE RATE LIMITING -----------------
+
+_FAILED_LOGIN_ATTEMPTS = {}  # ip -> list of attempt datetime objects
+MAX_LOGIN_ATTEMPTS = 5
+LOCKOUT_WINDOW_SECONDS = 600  # 10 minute lockout window
+
+def get_client_ip():
+    """Extract real client IP considering reverse proxies / Cloudflare / Render."""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.remote_addr or "127.0.0.1"
+
+def is_ip_locked_out(ip: str) -> bool:
+    now = datetime.now()
+    attempts = _FAILED_LOGIN_ATTEMPTS.get(ip, [])
+    # Filter attempts within the active lockout window
+    recent = [t for t in attempts if (now - t).total_seconds() < LOCKOUT_WINDOW_SECONDS]
+    _FAILED_LOGIN_ATTEMPTS[ip] = recent
+    return len(recent) >= MAX_LOGIN_ATTEMPTS
+
+def record_failed_attempt(ip: str):
+    now = datetime.now()
+    if ip not in _FAILED_LOGIN_ATTEMPTS:
+        _FAILED_LOGIN_ATTEMPTS[ip] = []
+    _FAILED_LOGIN_ATTEMPTS[ip].append(now)
+
+def clear_ip_attempts(ip: str):
+    _FAILED_LOGIN_ATTEMPTS.pop(ip, None)
 
 
 def staff_required(view):
@@ -44,21 +85,61 @@ def staff_required(view):
     return wrapper
 
 
-@app.route("/login", methods=["GET", "POST"])
+@app.after_request
+def apply_security_headers(response):
+    """Inject industry-standard defense-in-depth security headers."""
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(self), microphone=()"
+    return response
+
+
+# Pre-computed dummy hash to prevent username enumeration via timing attacks
+# Pre-computed dummy hash to prevent username enumeration via timing attacks
+_DUMMY_SALT = "00000000000000000000000000000000"
+_DUMMY_HASH = f"{_DUMMY_SALT}${hashlib.pbkdf2_hmac('sha256', b'timing_pad_dummy_key_2026', _DUMMY_SALT.encode(), 100000).hex()}"
+
+# Configurable confidential staff login path
+STAFF_LOGIN_PATH = os.environ.get("STAFF_LOGIN_PATH", "/staff-access").strip()
+if not STAFF_LOGIN_PATH.startswith("/"):
+    STAFF_LOGIN_PATH = "/" + STAFF_LOGIN_PATH
+
+@app.route("/staff-portal", methods=["GET", "POST"])
+@app.route(STAFF_LOGIN_PATH, methods=["GET", "POST"])
 def staff_login():
     if session.get("staff_user"):
         return redirect(url_for("admin_dashboard"))
 
+    client_ip = get_client_ip()
     error = None
+
     if request.method == "POST":
+        # 1. Check Brute-Force Rate Limiting
+        if is_ip_locked_out(client_ip):
+            return render_template(
+                "admin_login.html",
+                error="[SECURITY ALERT] Too many failed attempts. Login is locked from your IP address for 10 minutes.",
+                next=request.args.get("next", "")
+            ), 429
+
         username = (request.form.get("username") or "").strip()
         password = (request.form.get("password") or "")
+
         user = db.get_staff_user_by_username(username) if username else None
+
+        # 2. Anti-Timing-Attack: Always run PBKDF2 calculation even if username is invalid
         if user:
             ok, _needs_upgrade = db.verify_password(user["password_hash"], password)
+            if not ok and (password.startswith(" ") or password.endswith(" ")):
+                ok, _needs_upgrade = db.verify_password(user["password_hash"], password.strip())
         else:
+            db.verify_password(_DUMMY_HASH, password)
             ok = False
+
         if ok:
+            clear_ip_attempts(client_ip)
             session.clear()
             session["staff_user"] = user["username"]
             session.permanent = True
@@ -66,9 +147,24 @@ def staff_login():
             if not next_url.startswith("/"):
                 next_url = url_for("admin_dashboard")  # block open redirects
             return redirect(next_url)
-        error = "Invalid staff credentials. Access is restricted to event administrators."
 
-    return render_template("admin_login.html", error=error, next=request.args.get("next", ""))
+        # Record failed attempt and compute remaining attempts
+        record_failed_attempt(client_ip)
+        recent_count = len(_FAILED_LOGIN_ATTEMPTS.get(client_ip, []))
+        remaining = max(0, MAX_LOGIN_ATTEMPTS - recent_count)
+
+        if remaining == 0:
+            error = "[SECURITY ALERT] Too many failed attempts. Your IP has been temporarily locked for 10 minutes."
+        else:
+            error = f"Invalid staff credentials. Access restricted to authorized event administrators. ({remaining} attempt(s) remaining)"
+
+    return render_template("admin_login.html", error=error, next=request.args.get("next", ""), staff_login_url=STAFF_LOGIN_PATH)
+
+
+@app.route("/login")
+def public_login_redirect():
+    """Security deception: curious participants scanning /login land on Participant Portal."""
+    return redirect(url_for("participant_portal"))
 
 
 @app.route("/logout", methods=["POST"])
@@ -82,7 +178,7 @@ def staff_logout():
 def index():
     if session.get("staff_user"):
         return redirect(url_for("admin_dashboard"))
-    return redirect(url_for("staff_login"))
+    return redirect(url_for("checkin_page"))
 
 @app.route("/admin")
 @staff_required

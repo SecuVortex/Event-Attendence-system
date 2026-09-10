@@ -14,23 +14,45 @@
       <span class="mono text-muted" style="font-size: 0.8rem;">PIN-Protected Personal Record</span>
     </div>
 
-    <form id="formParticipantLookup" style="display: flex; gap: 12px; flex-wrap: wrap;">
-      <div style="flex: 2; min-width: 240px;">
+    <form id="formParticipantLookup" class="participant-lookup-form">
+      <div class="form-group-item field-id">
         <label class="form-label" for="lookupIdInput">Participant ID</label>
-        <input type="text" id="lookupIdInput" class="form-control mono" placeholder="Your unique event ID"
+        <input type="text" id="lookupIdInput" class="form-control mono" placeholder="e.g. TECHSTAR-26-001"
                value="{{ initial_id }}" required style="text-transform: uppercase;" autocomplete="username">
       </div>
-      <div style="flex: 1; min-width: 150px;">
+      <div class="form-group-item field-pin">
         <label class="form-label" for="lookupPinInput">Access PIN</label>
-        <input type="password" id="lookupPinInput" class="form-control mono" placeholder="Your access PIN"
-               required inputmode="numeric" autocomplete="current-password">
+        <div style="position: relative;">
+          <input type="password" id="lookupPinInput" class="form-control mono" placeholder="Access PIN"
+                 required inputmode="numeric" autocomplete="current-password" style="padding-right: 48px;">
+          <button type="button" id="btnTogglePortalPin" aria-label="Toggle PIN visibility"
+                  style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--muted-gray); cursor: pointer; padding: 6px; font-size: 0.9rem;">
+            👁
+          </button>
+        </div>
       </div>
-      <div style="align-self: flex-end; flex: 1; min-width: 140px;">
-        <button type="submit" id="btnLookup" class="btn btn-neon" style="width: 100%; padding: 12px;">
+      <div class="form-group-item field-submit">
+        <button type="submit" id="btnLookup" class="btn btn-neon" style="width: 100%; padding: 12px 18px; font-weight: 700;">
           View My Record
         </button>
       </div>
     </form>
+
+    <script>
+      const btnTogglePortal = document.getElementById('btnTogglePortalPin');
+      const portalPin = document.getElementById('lookupPinInput');
+      if (btnTogglePortal && portalPin) {
+        btnTogglePortal.addEventListener('click', () => {
+          if (portalPin.type === 'password') {
+            portalPin.type = 'text';
+            btnTogglePortal.textContent = '🔒';
+          } else {
+            portalPin.type = 'password';
+            btnTogglePortal.textContent = '👁';
+          }
+        });
+      }
+    </script>
 
     <!-- Inline not-found / error state -->
     <div id="lookupErrorBox" class="form-error-box" style="display: none; margin-top: 14px;" role="alert">
@@ -48,21 +70,21 @@
   <!-- Record Display Area -->
   <div id="participantRecordCard" class="card" style="display: none;">
     <!-- Top Identity Header -->
-    <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 1px solid var(--dark-border); margin-bottom: 20px; flex-wrap: wrap; gap: 16px;">
+    <div class="participant-header">
       <div>
         <div class="brand-badge" style="margin-bottom: 8px;">
           <span class="pulse-dot"></span>
           <span id="pEventName">--</span>
         </div>
         <h2 id="pFullName" style="font-size: 1.6rem; font-weight: 800; margin-bottom: 4px;">--</h2>
-        <div class="text-muted" style="font-size: 0.85rem;">
+        <div class="text-muted" style="font-size: 0.85rem; word-break: break-word;">
           ID: <span id="pCode" class="mono text-neon font-weight-bold">--</span> •
           <span id="pOrg">--</span> •
           <span id="pEmail">--</span>
         </div>
       </div>
 
-      <div style="text-align: right; background: rgba(0,255,102,0.06); border: 1px solid var(--neon-green); padding: 14px 20px; border-radius: 12px; box-shadow: var(--glow-sm); min-width: 170px;">
+      <div class="turnout-badge-box">
         <div id="pAttendancePct" class="mono text-neon" style="font-size: 2.2rem; font-weight: 800; line-height: 1;">--%</div>
         <div class="text-muted" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px;">Turnout Rate</div>
         <div style="width: 100%; height: 6px; background: rgba(18,59,39,0.5); border-radius: 3px; margin-top: 8px; overflow: hidden;">
@@ -72,16 +94,16 @@
     </div>
 
     <!-- Summary Metrics -->
-    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px;">
-      <div style="padding: 14px; background: #050807; border: 1px solid var(--dark-border); border-radius: 8px; text-align: center;">
+    <div class="participant-metrics-grid">
+      <div class="metric-box">
         <div class="text-muted" style="font-size: 0.75rem;">TOTAL SESSIONS</div>
         <div id="pTotalSessions" class="mono" style="font-size: 1.5rem; font-weight: 700;">--</div>
       </div>
-      <div style="padding: 14px; background: #050807; border: 1px solid var(--dark-border); border-radius: 8px; text-align: center;">
+      <div class="metric-box">
         <div class="text-muted" style="font-size: 0.75rem;">SESSIONS ATTENDED</div>
         <div id="pAttended" class="mono text-neon" style="font-size: 1.5rem; font-weight: 700;">--</div>
       </div>
-      <div style="padding: 14px; background: #050807; border: 1px solid var(--dark-border); border-radius: 8px; text-align: center;">
+      <div class="metric-box">
         <div class="text-muted" style="font-size: 0.75rem;">SESSIONS MISSED</div>
         <div id="pMissed" class="mono text-muted" style="font-size: 1.5rem; font-weight: 700;">--</div>
       </div>

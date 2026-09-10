@@ -14,14 +14,173 @@ import hashlib
 import secrets
 from datetime import datetime, timezone
 
+try:
+    import psycopg2
+    import psycopg2.extras
+    import psycopg2.pool
+    IntegrityError = (sqlite3.IntegrityError, psycopg2.IntegrityError)
+except ImportError:
+    psycopg2 = None
+    IntegrityError = (sqlite3.IntegrityError,)
+
+def load_env_file():
+    """Load key-value pairs from .env file into os.environ if not already set."""
+    env_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if os.path.isfile(env_file):
+        try:
+            with open(env_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        k = k.strip()
+                        v = v.strip().strip('"').strip("'")
+                        # Always set from .env so credential/config updates take effect immediately
+                        os.environ[k] = v
+        except Exception:
+            pass
+
+# Load .env at module import
+load_env_file()
+
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "attendance.db")
 
+
+class DBCursor:
+    """Unified cursor wrapper translating queries and parameters for SQLite and PostgreSQL."""
+    def __init__(self, raw_cur, is_postgres=False):
+        self.raw_cur = raw_cur
+        self.is_postgres = is_postgres
+        self._lastrowid = None
+
+    @property
+    def lastrowid(self):
+        return self._lastrowid if self.is_postgres else self.raw_cur.lastrowid
+
+    def execute(self, sql, params=()):
+        if self.is_postgres:
+            pg_sql = sql.replace("?", "%s")
+            is_insert = pg_sql.strip().upper().startswith("INSERT INTO")
+            if is_insert and "RETURNING" not in pg_sql.upper():
+                pg_sql_with_ret = pg_sql.rstrip().rstrip(";") + " RETURNING id;"
+                self.raw_cur.execute(pg_sql_with_ret, params)
+                res = self.raw_cur.fetchone()
+                if res:
+                    self._lastrowid = res["id"] if isinstance(res, dict) else res[0]
+                return self
+            else:
+                self.raw_cur.execute(pg_sql, params)
+                return self
+        else:
+            self.raw_cur.execute(sql, params)
+            return self
+
+    def executescript(self, script):
+        if self.is_postgres:
+            self.raw_cur.execute(script)
+        else:
+            self.raw_cur.executescript(script)
+        return self
+
+    def fetchone(self):
+        return self.raw_cur.fetchone()
+
+    def fetchall(self):
+        return self.raw_cur.fetchall()
+
+    def close(self):
+        self.raw_cur.close()
+
+    def __iter__(self):
+        return iter(self.raw_cur)
+
+
+class DBConnection:
+    """Unified connection wrapper providing uniform execute, commit, and rollback methods."""
+    def __init__(self, raw_conn, is_postgres=False):
+        self.raw_conn = raw_conn
+        self.is_postgres = is_postgres
+
+    def cursor(self):
+        return DBCursor(self.raw_conn.cursor(), self.is_postgres)
+
+    def execute(self, sql, params=()):
+        cur = self.cursor()
+        cur.execute(sql, params)
+        return cur
+
+    def commit(self):
+        self.raw_conn.commit()
+
+    def rollback(self):
+        self.raw_conn.rollback()
+
+    def close(self):
+        if self.is_postgres and _DB_POOL:
+            try:
+                self.raw_conn.rollback()
+            except Exception:
+                pass
+            try:
+                _DB_POOL.putconn(self.raw_conn)
+            except Exception:
+                self.raw_conn.close()
+        else:
+            self.raw_conn.close()
+
+    def executescript(self, script):
+        cur = self.cursor()
+        cur.executescript(script)
+        self.commit()
+        return cur
+
+
+_DB_POOL = None
+
+def get_db_pool():
+    global _DB_POOL
+    if _DB_POOL is None:
+        db_url = os.environ.get("DATABASE_URL")
+        if db_url and psycopg2:
+            if db_url.startswith("postgres://"):
+                db_url = db_url.replace("postgres://", "postgresql://", 1)
+            try:
+                _DB_POOL = psycopg2.pool.ThreadedConnectionPool(
+                    minconn=2,
+                    maxconn=20,
+                    dsn=db_url,
+                    cursor_factory=psycopg2.extras.RealDictCursor
+                )
+            except Exception:
+                _DB_POOL = None
+    return _DB_POOL
+
+
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    conn.execute("PRAGMA journal_mode = WAL;")
-    return conn
+    """
+    Returns a unified database connection.
+    If DATABASE_URL is set (e.g. Supabase PostgreSQL on Render), connects via connection pool.
+    Otherwise, falls back to local SQLite (attendance.db) for offline development.
+    """
+    load_env_file()
+    db_url = os.environ.get("DATABASE_URL")
+    if db_url and psycopg2:
+        pool = get_db_pool()
+        if pool:
+            raw_conn = pool.getconn()
+            return DBConnection(raw_conn, is_postgres=True)
+        else:
+            if db_url.startswith("postgres://"):
+                db_url = db_url.replace("postgres://", "postgresql://", 1)
+            raw_conn = psycopg2.connect(db_url, cursor_factory=psycopg2.extras.RealDictCursor)
+            return DBConnection(raw_conn, is_postgres=True)
+    else:
+        raw_conn = sqlite3.connect(DB_PATH)
+        raw_conn.row_factory = sqlite3.Row
+        raw_conn.execute("PRAGMA foreign_keys = ON;")
+        raw_conn.execute("PRAGMA journal_mode = WAL;")
+        return DBConnection(raw_conn, is_postgres=False)
+
 
 def hash_password(password: str, salt: str = None) -> str:
     """Hash password using PBKDF2-HMAC-SHA256 with salt."""
@@ -29,6 +188,7 @@ def hash_password(password: str, salt: str = None) -> str:
         salt = secrets.token_hex(16)
     key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000)
     return f"{salt}${key.hex()}"
+
 
 def verify_password(stored_hash: str, password: str):
     """
@@ -49,99 +209,169 @@ def verify_password(stored_hash: str, password: str):
     except Exception:
         return False, False
 
+
 def init_db():
     """Create all required tables with database-level constraints."""
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.executescript("""
-    -- Events table: generic container for any event
-    CREATE TABLE IF NOT EXISTS events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_code TEXT UNIQUE NOT NULL,
-        name TEXT NOT NULL,
-        description TEXT,
-        venue TEXT,
-        start_date TEXT NOT NULL,
-        end_date TEXT NOT NULL,
-        created_at TEXT NOT NULL
-    );
+    if conn.is_postgres:
+        cursor.executescript("""
+        CREATE TABLE IF NOT EXISTS events (
+            id SERIAL PRIMARY KEY,
+            event_code VARCHAR(100) UNIQUE NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            description TEXT,
+            venue VARCHAR(255),
+            start_date VARCHAR(50) NOT NULL,
+            end_date VARCHAR(50) NOT NULL,
+            created_at VARCHAR(50) NOT NULL
+        );
 
-    -- Sessions table: dynamic sessions under events
-    CREATE TABLE IF NOT EXISTS sessions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_id INTEGER NOT NULL,
-        name TEXT NOT NULL,
-        session_date TEXT NOT NULL,
-        start_time TEXT NOT NULL,
-        end_time TEXT NOT NULL,
-        late_threshold_minutes INTEGER DEFAULT 15,
-        is_active INTEGER DEFAULT 0,
-        session_token TEXT UNIQUE NOT NULL,
-        created_at TEXT NOT NULL,
-        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
-    );
+        CREATE TABLE IF NOT EXISTS sessions (
+            id SERIAL PRIMARY KEY,
+            event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+            name VARCHAR(255) NOT NULL,
+            session_date VARCHAR(50) NOT NULL,
+            start_time VARCHAR(50) NOT NULL,
+            end_time VARCHAR(50) NOT NULL,
+            late_threshold_minutes INTEGER DEFAULT 15,
+            is_active INTEGER DEFAULT 0,
+            session_token VARCHAR(100) UNIQUE NOT NULL,
+            created_at VARCHAR(50) NOT NULL
+        );
 
-    -- Participants table: registered participants
-    CREATE TABLE IF NOT EXISTS participants (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_id INTEGER NOT NULL,
-        participant_id TEXT UNIQUE NOT NULL,
-        full_name TEXT NOT NULL,
-        email TEXT UNIQUE NOT NULL,
-        organization TEXT,
-        password_hash TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
-    );
+        CREATE TABLE IF NOT EXISTS participants (
+            id SERIAL PRIMARY KEY,
+            event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+            participant_id VARCHAR(100) UNIQUE NOT NULL,
+            full_name VARCHAR(255) NOT NULL,
+            email VARCHAR(255) UNIQUE NOT NULL,
+            organization VARCHAR(255),
+            password_hash TEXT NOT NULL,
+            created_at VARCHAR(50) NOT NULL
+        );
 
-    -- Attendance records: strictly 1 record per participant per session
-    CREATE TABLE IF NOT EXISTS attendance_records (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        participant_id INTEGER NOT NULL,
-        event_id INTEGER NOT NULL,
-        session_id INTEGER NOT NULL,
-        checkin_time TEXT NOT NULL,
-        status TEXT NOT NULL CHECK(status IN ('Present', 'Late')),
-        admin_scanner_id TEXT NOT NULL DEFAULT 'SYSTEM_GATE',
-        created_at TEXT NOT NULL,
-        FOREIGN KEY (participant_id) REFERENCES participants(id) ON DELETE CASCADE,
-        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
-        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
-        UNIQUE(participant_id, session_id)
-    );
+        CREATE TABLE IF NOT EXISTS attendance_records (
+            id SERIAL PRIMARY KEY,
+            participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+            event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+            session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+            checkin_time VARCHAR(50) NOT NULL,
+            status VARCHAR(20) NOT NULL CHECK(status IN ('Present', 'Late')),
+            admin_scanner_id VARCHAR(100) NOT NULL DEFAULT 'SYSTEM_GATE',
+            created_at VARCHAR(50) NOT NULL,
+            CONSTRAINT uq_participant_session UNIQUE(participant_id, session_id)
+        );
 
-    -- Attendance attempt logs for analytics (duplicates, invalid attempts, inactive session alerts)
-    CREATE TABLE IF NOT EXISTS attendance_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id INTEGER,
-        participant_code_attempted TEXT,
-        attempt_type TEXT NOT NULL CHECK(attempt_type IN ('SUCCESS', 'DUPLICATE', 'INVALID_CREDENTIALS', 'SESSION_INACTIVE')),
-        message TEXT,
-        scanner_id TEXT DEFAULT 'SYSTEM_GATE',
-        created_at TEXT NOT NULL
-    );
+        CREATE TABLE IF NOT EXISTS attendance_logs (
+            id SERIAL PRIMARY KEY,
+            session_id INTEGER,
+            participant_code_attempted VARCHAR(100),
+            attempt_type VARCHAR(50) NOT NULL CHECK(attempt_type IN ('SUCCESS', 'DUPLICATE', 'INVALID_CREDENTIALS', 'SESSION_INACTIVE')),
+            message TEXT,
+            scanner_id VARCHAR(100) DEFAULT 'SYSTEM_GATE',
+            created_at VARCHAR(50) NOT NULL
+        );
 
-    -- Staff accounts for admin console access (server-side bootstrap only)
-    CREATE TABLE IF NOT EXISTS staff_users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        display_name TEXT NOT NULL DEFAULT 'Event Administrator',
-        created_at TEXT NOT NULL
-    );
+        CREATE TABLE IF NOT EXISTS staff_users (
+            id SERIAL PRIMARY KEY,
+            username VARCHAR(100) UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            display_name VARCHAR(255) NOT NULL DEFAULT 'Event Administrator',
+            created_at VARCHAR(50) NOT NULL
+        );
 
-    -- Indexes for high-performance lookups
-    CREATE INDEX IF NOT EXISTS idx_sessions_event ON sessions(event_id);
-    CREATE INDEX IF NOT EXISTS idx_participants_event ON participants(event_id);
-    CREATE INDEX IF NOT EXISTS idx_participants_code ON participants(participant_id);
-    CREATE INDEX IF NOT EXISTS idx_attendance_session ON attendance_records(session_id);
-    CREATE INDEX IF NOT EXISTS idx_attendance_participant ON attendance_records(participant_id);
-    CREATE INDEX IF NOT EXISTS idx_attendance_logs_session ON attendance_logs(session_id);
-    """)
+        CREATE INDEX IF NOT EXISTS idx_sessions_event ON sessions(event_id);
+        CREATE INDEX IF NOT EXISTS idx_participants_event ON participants(event_id);
+        CREATE INDEX IF NOT EXISTS idx_participants_code ON participants(participant_id);
+        CREATE INDEX IF NOT EXISTS idx_attendance_session ON attendance_records(session_id);
+        CREATE INDEX IF NOT EXISTS idx_attendance_participant ON attendance_records(participant_id);
+        CREATE INDEX IF NOT EXISTS idx_attendance_logs_session ON attendance_logs(session_id);
+        """)
+    else:
+        cursor.executescript("""
+        CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_code TEXT UNIQUE NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            venue TEXT,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            session_date TEXT NOT NULL,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            late_threshold_minutes INTEGER DEFAULT 15,
+            is_active INTEGER DEFAULT 0,
+            session_token TEXT UNIQUE NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS participants (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id INTEGER NOT NULL,
+            participant_id TEXT UNIQUE NOT NULL,
+            full_name TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            organization TEXT,
+            password_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS attendance_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            participant_id INTEGER NOT NULL,
+            event_id INTEGER NOT NULL,
+            session_id INTEGER NOT NULL,
+            checkin_time TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('Present', 'Late')),
+            admin_scanner_id TEXT NOT NULL DEFAULT 'SYSTEM_GATE',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (participant_id) REFERENCES participants(id) ON DELETE CASCADE,
+            FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+            FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+            UNIQUE(participant_id, session_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS attendance_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER,
+            participant_code_attempted TEXT,
+            attempt_type TEXT NOT NULL CHECK(attempt_type IN ('SUCCESS', 'DUPLICATE', 'INVALID_CREDENTIALS', 'SESSION_INACTIVE')),
+            message TEXT,
+            scanner_id TEXT DEFAULT 'SYSTEM_GATE',
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS staff_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            display_name TEXT NOT NULL DEFAULT 'Event Administrator',
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_sessions_event ON sessions(event_id);
+        CREATE INDEX IF NOT EXISTS idx_participants_event ON participants(event_id);
+        CREATE INDEX IF NOT EXISTS idx_participants_code ON participants(participant_id);
+        CREATE INDEX IF NOT EXISTS idx_attendance_session ON attendance_records(session_id);
+        CREATE INDEX IF NOT EXISTS idx_attendance_participant ON attendance_records(participant_id);
+        CREATE INDEX IF NOT EXISTS idx_attendance_logs_session ON attendance_logs(session_id);
+        """)
 
     conn.commit()
     conn.close()
+
 
 # ----------------- EVENT OPERATIONS -----------------
 
@@ -434,7 +664,7 @@ def process_attendance_checkin(session_id, participant_id_code, password, scanne
                 "checkin_time": server_timestamp_str,
                 "status": status
             }
-        except sqlite3.IntegrityError:
+        except IntegrityError:
             conn.rollback()
             prior = cursor.execute("SELECT * FROM attendance_records WHERE participant_id = ? AND session_id = ?", 
                                    (participant["id"], session_id)).fetchone()

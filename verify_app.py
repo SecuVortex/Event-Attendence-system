@@ -4,11 +4,18 @@ Verifies auth guards, all routes, templates rendering, API responses, check-in f
 duplicate handling, analytics, and export downloads.
 """
 
+import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+
+import os
 from app import app
 import database as db
 
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "admin123"
+db.load_env_file()
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "techstar_admin_secops")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Techstar_GLA_SecOps#2026!Admin")
 
 
 def run_integration_tests():
@@ -17,14 +24,27 @@ def run_integration_tests():
 
     # 0. AUTH GUARDS: staff pages and APIs must be protected
     print("\n--- Testing Access Security ---")
+    staff_path = os.environ.get("STAFF_LOGIN_PATH", "/staff-access")
+
+    # Root / redirects anonymous users to /checkin
+    res = client.get("/")
+    assert res.status_code == 302 and "/checkin" in res.headers.get("Location", "")
+    print("[PASS] Root / redirects anonymous visitors to /checkin")
+
+    # Public probing /login redirects to /participant (anti-reconnaissance)
+    res = client.get("/login")
+    assert res.status_code == 302 and "/participant" in res.headers.get("Location", "")
+    print("[PASS] Public /login redirects to /participant")
+
+    # Protected routes redirect to secret staff login path
     res = client.get("/admin")
-    assert res.status_code == 302 and "/login" in res.headers.get("Location", ""), \
-        f"/admin must redirect unauthenticated staff to /login (got {res.status_code})"
-    print("[PASS] /admin redirects anonymous users to /login")
+    assert res.status_code == 302 and staff_path in res.headers.get("Location", ""), \
+        f"/admin must redirect unauthenticated staff to {staff_path} (got {res.status_code})"
+    print(f"[PASS] /admin redirects anonymous users to {staff_path}")
 
     res = client.get("/projector")
-    assert res.status_code == 302 and "/login" in res.headers.get("Location", "")
-    print("[PASS] /projector redirects anonymous users to /login")
+    assert res.status_code == 302 and staff_path in res.headers.get("Location", "")
+    print(f"[PASS] /projector redirects anonymous users to {staff_path}")
 
     res = client.get("/api/events")
     assert res.status_code == 401, f"/api/events must return 401 for anonymous (got {res.status_code})"
@@ -39,21 +59,27 @@ def run_integration_tests():
     print("[PASS] /api/export/csv returns 401 for anonymous users")
 
     # Public routes stay open for participants
-    for public in ("/checkin", "/participant", "/login"):
+    for public in ("/checkin", "/participant"):
         res = client.get(public)
         assert res.status_code == 200, f"{public} should be public (got {res.status_code})"
         print(f"[PASS] {public} stays public")
 
+    # Confidential staff login path returns 200
+    res = client.get(staff_path)
+    assert res.status_code == 200, f"{staff_path} must return 200 (got {res.status_code})"
+    assert b"RESTRICTED ACCESS" in res.data
+    print(f"[PASS] {staff_path} renders Staff Login portal")
+
     # Wrong password rejected
-    res = client.post("/login", data={"username": ADMIN_USERNAME, "password": "totally-wrong"})
+    res = client.post(staff_path, data={"username": ADMIN_USERNAME, "password": "totally-wrong"})
     assert res.status_code == 200  # re-renders login page with error
     assert b"Invalid staff credentials" in res.data
     print("[PASS] Wrong staff password rejected")
 
     # Correct login -> redirects to admin
-    res = client.post("/login", data={"username": ADMIN_USERNAME, "password": ADMIN_PASSWORD}, follow_redirects=False)
+    res = client.post(staff_path, data={"username": ADMIN_USERNAME, "password": ADMIN_PASSWORD}, follow_redirects=False)
     assert res.status_code == 302 and "/admin" in res.headers.get("Location", "")
-    print("[PASS] Staff login succeeds and redirects to /admin")
+    print(f"[PASS] Staff login at {staff_path} succeeds and redirects to /admin")
 
     # 1. Page Routes (authenticated)
     print("\n--- Testing Page Renders ---")

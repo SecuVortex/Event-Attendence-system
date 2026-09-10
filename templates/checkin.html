@@ -51,8 +51,14 @@
       </div>
 
       <div class="form-group">
-        <label class="form-label">Access PIN / Password</label>
-        <input type="password" id="participantPinInput" class="form-control mono" placeholder="Enter your personal Access PIN" required inputmode="numeric" autocomplete="current-password">
+        <label class="form-label" for="participantPinInput">Access PIN / Password</label>
+        <div style="position: relative;">
+          <input type="password" id="participantPinInput" class="form-control mono" placeholder="Enter your personal Access PIN" required inputmode="numeric" autocomplete="current-password" style="padding-right: 48px;">
+          <button type="button" id="btnToggleCheckinPin" aria-label="Toggle PIN visibility"
+                  style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--muted-gray); cursor: pointer; padding: 6px; font-size: 0.9rem;">
+            👁
+          </button>
+        </div>
         <small class="text-muted" style="font-size: 0.75rem;">Protects your identity from unauthorized check-in</small>
       </div>
 
@@ -60,6 +66,22 @@
         VERIFY & MARK ATTENDANCE
       </button>
     </form>
+
+    <script>
+      const btnTogglePin = document.getElementById('btnToggleCheckinPin');
+      const pinInput = document.getElementById('participantPinInput');
+      if (btnTogglePin && pinInput) {
+        btnTogglePin.addEventListener('click', () => {
+          if (pinInput.type === 'password') {
+            pinInput.type = 'text';
+            btnTogglePin.textContent = '🔒';
+          } else {
+            pinInput.type = 'password';
+            btnTogglePin.textContent = '👁';
+          }
+        });
+      }
+    </script>
 
     <!-- Result Confirmation Box (Injected dynamically) -->
     <div id="checkinResultBox" style="display: none;"></div>

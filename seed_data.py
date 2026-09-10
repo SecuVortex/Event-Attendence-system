@@ -4,6 +4,11 @@ This script is completely separated from the core application logic.
 Run this script to initialize and populate sample data for testing and demonstration.
 """
 
+import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+
 from database import (
     init_db, create_event, create_session, register_participant,
     toggle_session_attendance, process_attendance_checkin, log_attempt,
