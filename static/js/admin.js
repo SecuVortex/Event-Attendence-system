@@ -295,7 +295,8 @@ async function toggleSessionAttendance() {
   try {
     const res = await fetchWithAuth(`/api/sessions/${currentSessionData.id}/toggle`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" }
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({})
     });
     const data = await res.json();
     if (data.success) {
@@ -319,7 +320,8 @@ async function regenerateQR() {
   try {
     const res = await fetchWithAuth(`/api/sessions/${currentSessionData.id}/regenerate_token`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" }
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({})
     });
     const data = await res.json();
     if (data.success) {

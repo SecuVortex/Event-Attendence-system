@@ -285,7 +285,7 @@ def api_get_events():
 @app.route("/api/events", methods=["POST"])
 @staff_required
 def api_create_event():
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     name = data.get("name", "").strip()
     code = data.get("event_code", "").strip()
     desc = data.get("description", "").strip()
@@ -314,7 +314,7 @@ def api_get_sessions():
 @app.route("/api/sessions", methods=["POST"])
 @staff_required
 def api_create_session():
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     event_id = data.get("event_id")
     name = data.get("name", "").strip()
     session_date = data.get("session_date", "").strip()
@@ -339,7 +339,7 @@ def api_create_session():
 @app.route("/api/sessions/<int:session_id>/toggle", methods=["POST"])
 @staff_required
 def api_toggle_session(session_id):
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     is_active = data.get("is_active")
     new_state = db.toggle_session_attendance(session_id, is_active)
     if new_state is None:
@@ -382,7 +382,7 @@ def api_get_participants():
 @app.route("/api/participants", methods=["POST"])
 @staff_required
 def api_register_participant():
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     event_id = data.get("event_id")
     participant_id = data.get("participant_id", "").strip().upper()
     full_name = data.get("full_name", "").strip()
@@ -403,7 +403,7 @@ def api_register_participant():
 @staff_required
 def api_bulk_participants():
     """Bulk import participants from CSV or JSON roster."""
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     event_id = data.get("event_id")
     roster = data.get("roster", [])
 
@@ -447,7 +447,7 @@ def api_participant_login():
     PIN-gated participant portal login. Returns a short-lived access token
     (stored server-side hash of the PIN) — the portal keeps it in memory only.
     """
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     participant_id = (data.get("participant_id") or "").strip()
     password = (data.get("password") or "").strip()
 
@@ -471,7 +471,7 @@ def api_participant_login():
 @app.route("/api/participant/history", methods=["POST"])
 def api_participant_history_authed():
     """PIN-verified attendance history for the participant portal."""
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     participant_id = (data.get("participant_id") or "").strip()
     password = (data.get("password") or "").strip()
 
@@ -498,7 +498,7 @@ def api_attendance_checkin():
     - Rejection of duplicates via DB constraint
     - Returns authoritative server timestamp
     """
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     session_id = data.get("session_id")
     participant_id = data.get("participant_id", "").strip().upper()
     password = data.get("password", "").strip()
