@@ -204,7 +204,7 @@ def checkin_page():
             session_id = session_data["id"]
             token = session_data["session_token"]
 
-    return render_template("checkin.html", session_data=session_data, token=token)
+    return render_template("participant.html", session_data=session_data, token=token, initial_id=request.args.get("id", ""), default_tab="checkin")
 
 
 @app.route("/projector")
@@ -227,7 +227,24 @@ def projector_page():
 @app.route("/participant")
 def participant_portal():
     participant_id = request.args.get("id", "")
-    return render_template("participant.html", initial_id=participant_id)
+    session_id = request.args.get("session_id", type=int)
+    token = request.args.get("token", "")
+    if session_id:
+        session_data = db.get_session_by_id(session_id)
+    else:
+        conn = db.get_db_connection()
+        active = conn.execute("SELECT id FROM sessions WHERE is_active = 1 ORDER BY id DESC LIMIT 1").fetchone()
+        if not active:
+            active = conn.execute("SELECT id FROM sessions ORDER BY id DESC LIMIT 1").fetchone()
+        conn.close()
+        session_data = db.get_session_by_id(active["id"]) if active else None
+        if session_data:
+            session_id = session_data["id"]
+            token = session_data["session_token"]
+
+    # If an active session exists, default to 'checkin', else default to 'history'
+    default_tab = "history" if (participant_id and not request.args.get("session_id")) else ("checkin" if (session_data and session_data.get("is_active")) else "checkin")
+    return render_template("participant.html", session_data=session_data, token=token, initial_id=participant_id, default_tab=default_tab)
 
 # ----------------- QR API -----------------
 
@@ -512,6 +529,11 @@ def api_attendance_checkin():
         }), 400
 
     result = db.process_attendance_checkin(session_id, participant_id, password, scanner_id)
+    if result.get("success") or result.get("status_code") == "ALREADY_CHECKED_IN":
+        try:
+            result["student_record"] = db.get_participant_full_history(participant_id)
+        except Exception:
+            pass
     http_code = 200 if result["success"] else (409 if result["status_code"] == "ALREADY_CHECKED_IN" else 400)
     return jsonify(result), http_code
 
